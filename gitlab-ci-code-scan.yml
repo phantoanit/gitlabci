@@ -1,0 +1,68 @@
+variables:
+    ZIP_VERSION: $CI_PROJECT_NAME-$CI_COMMIT_SHORT_SHA-$CI_COMMIT_TAG.zip
+    IMAGE_VERSION: $CI_PROJECT_NAME:$CI_COMMIT_SHORT_SHA-$CI_COMMIT_TAG
+    CODECLIMATE_FILE: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHORT_SHA}_codeclimate"
+    SNYKSCAN_FILE: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHORT_SHA}_snykscan"
+stages:
+    - build
+    - test
+    - deploy
+
+build:
+    stage: build
+    variables:
+        GIT_STRATEGY: clone
+    script:
+        - npm run prod --mode=raovat;
+        - docker build -t $IMAGE_VERSION .
+    tags:
+        - vatgia-runner-dev-shell
+    only:
+        - tags
+
+codeclimate:
+    stage: test
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - echo "docker run --rm -env CODECLIMATE_CODE=$PWD --volume $PWD:/code --volume /var/run/docker.sock:/var/run/docker.sock --volume /tmp/cc:/tmp/cc codeclimate/codeclimate analyze -f html> $CODECLIMATE_FILE.html"
+        - docker run --rm -env CODECLIMATE_CODE="$PWD" --volume "$PWD":/code --volume /var/run/docker.sock:/var/run/docker.sock --volume /tmp/cc:/tmp/cc codeclimate/codeclimate analyze -f html> $CODECLIMATE_FILE.html
+    tags:
+        - vatgia-runner-dev-shell
+    only:
+        - tags
+    artifacts:
+        paths:
+        - $CODECLIMATE_FILE.html
+        expire_in: 1 day
+
+snykscan:
+    stage: test
+    variables:
+        GIT_STRATEGY: clone
+    script:
+        - echo "docker build --rm --network host --build-arg SNYK_AUTH_TOKEN=$SNYK_TOKEN --build-arg OUTPUT_FILENAME=$SNYKSCAN_FILE -t $SNYKSCAN_FILE -f Dockerfile-snyk ."
+        - docker build --rm --network host --build-arg SNYK_AUTH_TOKEN=$SNYK_TOKEN --build-arg OUTPUT_FILENAME=$SNYKSCAN_FILE -t $SNYKSCAN_FILE -f Dockerfile-snyk .
+        - docker create --name $SNYKSCAN_FILE $SNYKSCAN_FILE
+        - docker cp $SNYKSCAN_FILE:/app/$SNYKSCAN_FILE.html .
+    tags:
+        - vatgia-runner-dev-shell
+    only:
+        - tags
+    artifacts:
+        paths:
+        - $SNYKSCAN_FILE.html
+        expire_in: 1 day
+
+deploy:
+    stage: deploy
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - sudo su phantoanit -c "docker rm -f $CI_PROJECT_NAME; docker run --name $CI_PROJECT_NAME -dp $VG_PORT $IMAGE_VERSION"
+    tags:
+        - vatgia-runner-dev-shell
+    only:
+        - tags
+  
+   

@@ -1,0 +1,30 @@
+stages:
+    - build
+    - deploy
+
+build:
+    stage: build
+    variables:
+        GIT_STRATEGY: clone
+    script:
+        - npm run prod --mode=raovat
+    tags:
+        - vatgia-runner-dev-shell
+    only:
+        tags
+
+deploy:
+    stage: deploy
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - pid=$(sudo lsof -t -i :8000 || true)
+        - if [ -n "$pid" ]; then
+            sudo kill -9 $pid;
+          fi
+        - sudo su phantoanit -c "cd /var/www/vatgia-4.0; nohup php artisan serv --host=0.0.0.0 --port=8000 > log.txt 2>&1 &"
+    tags:
+        - vatgia-runner-dev-shell
+    only:
+        tags
+   

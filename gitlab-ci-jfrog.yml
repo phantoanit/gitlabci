@@ -1,0 +1,48 @@
+variables:
+    ZIP_VERSION: $CI_PROJECT_NAME-$CI_COMMIT_SHORT_SHA-$CI_COMMIT_TAG.zip
+stages:
+    - build
+    - push
+    - deploy
+
+build:
+    stage: build
+    variables:
+        GIT_STRATEGY: clone
+    script:
+        - npm run prod --mode=raovat
+        - zip -r $ZIP_VERSION .
+    tags:
+        - vatgia-runner-dev-shell
+    only:
+        - tags
+
+push:
+    stage: push
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - echo $ARTIFACT_USER:$ARTIFACT_PASS
+        - echo $ARTIFACT_URL/$ZIP_VERSION
+        - curl -X PUT -u $ARTIFACT_USER:$ARTIFACT_PASS -T $ZIP_VERSION "$ARTIFACT_URL/$ZIP_VERSION"
+    tags:
+        - vatgia-runner-dev-shell
+    only:
+        - tags
+
+deploy:
+    stage: deploy
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - sudo su phantoanit -c "cd /var/www/vatgia-4.0; rm -rf *; curl -u $ARTIFACT_USER:$ARTIFACT_PASS -O $ARTIFACT_URL/$ZIP_VERSION; unzip -o $ZIP_VERSION "
+        - pid=$(sudo lsof -t -i :8000 || true)
+        - if [ -n "$pid" ]; then
+            sudo kill -9 $pid;
+          fi
+        - sudo su phantoanit -c "cd /var/www/vatgia-4.0; nohup php artisan serv --host=0.0.0.0 --port=8000 > log.txt 2>&1 &"
+    tags:
+        - vatgia-runner-dev-shell
+    only:
+        - tags
+   
