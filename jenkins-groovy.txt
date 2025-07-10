@@ -109,4 +109,113 @@ if (action == "rollback") {
 # nhap vao input
 server, action
 
+## mau cau hinh pipeline cho du an react
+appUser = "shopnow"
+appName = "shopnow"
+appVersion = "0.0.1-SNAPSHOT"
+appType = "html"
+processName = "scripts/start.js"
+folderDeploy = "/home/${appName}/run"
+folderBackup = "/home/${appName}/backups"
+folderMain = "/home/${appName}"
+installScript = "sudo su ${appUser} -c 'cd ${folderDeploy}; npm install'"
+buildScript = "cd ${folderDeploy}; npm run build"
+copyScript = "sudo cp -r * ${folderDeploy}"
+permsScript = "sudo chown -R ${appUser}. ${folderDeploy}"
+runScript = "sudo su ${appUser} -c 'cd ${folderDeploy}; npm run start > nohup.out 2>&1 &'"
+gitLink = "https://gitlab.toandevops.click/shopnow/frontend.git"
 
+// CI_PROJECT_NAME = sh(script: "git remote show origin -n | grep Fetch | cut -d'/' -f5 | cut -d'.' -f1", returnStdout: true).trim()
+CI_PROJECT_NAME = "frontend"
+// def CI_COMMIT_HASH = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
+// def CI_COMMIT_SHORT_SHA = CI_COMMIT_HASH.take(8)
+// def CI_COMMIT_TAG = sh(script: "git describe --tags --exact-match ${CI_COMMIT_HASH}", returnStdout: true).trim()
+IMAGE_VERSION = "${CI_PROJECT_NAME}:" + params.hash.take(8)
+// def CURRENT_DIR = sh(script: 'pwd', returnStdout: true).trim()
+
+
+def getProcessId(processName) {
+    def processId = sh(returnStdout:true, script: """ ps -ef| grep ${processName}| grep -v grep| awk \'{print \$2}\' """, label: "get processId")
+}
+
+def startProject() {
+    
+    stage('start') {
+        sh(script: """ ${installScript} """, label: "install project")
+        sh(script: """ ${runScript} """, label: "run the project")
+        sleep 5
+        def processId = getProcessId("${processName}")
+        if ("${processId}" == "")
+            error("Cannot start process")
+    }
+    echo("${appName} with server " + params.server + " started")
+}
+
+def stopProject() {
+    stage('stop') {
+        def processId = getProcessId("${processName}")
+        if ("${processId}" != "")
+            sh(script: """ sudo su ${appUser} -c 'kill -9 ${processId}' """, label: "kill process")
+        echo("${appName} with server " + params.server + " stopped")
+    }
+}
+
+def upcodeProcess() {
+    stage('checkout') {
+        if (params.hash == "")
+            error("require hashing for code update.")
+        checkout([$class: 'GitSCM', branches: [[ name: params.hash ]],
+            userRemoteConfigs: [[ credentialsId: 'jenkins user pass', url: gitLink ]]])
+    }
+    
+    stage('config') {
+        sh(script: "rm -r node_modules/ || true", label: "remove node module")
+        sh(script: """ ${copyScript} """, label: "copy file into the deploy folder")
+        sh(script: """ ${permsScript} """, label: "assign project permissions")
+    }
+    stage('build') {
+        sh(script: """ ${installScript} """, label: "install package")
+        // sh(script: """ ${buildScript} """, label: "build with node")
+    }
+}
+
+def backupProcess() {
+    stage('backup') {
+        // shoe-ShoppingCart_03022024_1011.zip
+        def timeStamp = new Date().format("ddMMyyyy_HHmm")
+        def zipFileName = "${appName}_${timeStamp}" + ".zip"
+        sh(script: "sudo su ${appUser} -c 'rm -r ${folderDeploy}/node_modules/ ${folderDeploy}/build/ || true'", label: "remove node module")
+        sh(script: """ sudo su ${appUser} -c "cd ${folderMain};zip -r ${zipFileName} ${folderDeploy}; mv ${zipFileName} ${folderBackup} || true"  """, label: "backup old version")
+    }
+}
+
+def rollbackProcess() {
+    stage('rollback') {
+        sh(script: """ sudo su ${appUser} -c "cd ${folderDeploy};rm -rf *"  """, label: "delete the current version")
+        sh(script: """ sudo su ${appUser} -c "cd ${folderBackup};unzip ${params.rollback_version} -d /" """, label: "rollback process")
+    }
+}
+
+node(params.server) {
+    currentBuild.displayName = params.action
+    if (params.action == "start") {
+        startProject()
+    }
+    if (params.action == "stop") {
+        stopProject()
+    }
+    if (params.action == "upcode") {
+        currentBuild.description = "server " + params.server + " with hash " + params.hash
+        if (params.hash == "")
+            error("require hashing for code update.")
+        backupProcess()
+        stopProject()
+        upcodeProcess()
+        startProject()
+    }
+    if (params.action == "rollback") {
+        stopProject()
+        rollbackProcess()
+        startProject()
+    }
+}
