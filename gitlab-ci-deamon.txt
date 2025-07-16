@@ -1,0 +1,37 @@
+variables:
+    PATH_PROJECT: "/home/onlineshop/online-shop-backend/"
+    USER_PROJECT: "onlineshop"
+stages:
+    - build
+    - deploy
+
+build:
+    stage: build
+    variables:
+        GIT_STATEGY: clone
+    script:
+        - whoami
+        - dotnet restore
+    tags: 
+        - online-shop-runner-dev-shell
+
+deploy:
+    stage: deploy
+    variables:
+        GIT_STATEGY: none
+    script:
+        - sudo cp -rf * ${PATH_PROJECT}
+        - sudo chown -R ${USER_PROJECT}. ${PATH_PROJECT}
+        - |
+          PID=$(sudo netstat -tulpn 2>/dev/null | grep ":5214 " | awk '{print $7}' | cut -d'/' -f1) || true
+          echo "${PID}"
+          if [ -n "${PID}" ]; then
+            sudo kill -9 ${PID} || true
+          fi
+          
+        - sudo su ${USER_PROJECT} -c "cd ${PATH_PROJECT}; whoami; dotnet --version"
+        - sudo su ${USER_PROJECT} -c "cd ${PATH_PROJECT}; nohup dotnet run > log.txt 2>&1 &"
+        - echo "sudo su ${USER_PROJECT} -c 'cd ${PATH_PROJECT}; nohup dotnet run > log.txt 2>&1 &'"
+    tags: 
+        - online-shop-runner-dev-shell
+
