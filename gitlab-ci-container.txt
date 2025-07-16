@@ -1,0 +1,27 @@
+variables:
+    PATH_PROJECT: "/home/onlineshop/online-shop-backend/"
+    USER_PROJECT: "onlineshop"
+    IMAGE_VERSION: "$CI_PROJECT_NAME:$CI_COMMIT_SHORT_SHA"
+    
+stages:
+    - build
+    - deploy
+
+build:
+    stage: build
+    variables:
+        GIT_STRATEGY: clone
+    script:
+        - docker build -t ${IMAGE_VERSION} .
+    tags: 
+        - online-shop-runner-dev-shell
+
+deploy:
+    stage: deploy
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - sudo su ${USER_PROJECT} -c "docker rm -f $CI_PROJECT_NAME; docker run --name $CI_PROJECT_NAME -dp '5214:5214' ${IMAGE_VERSION}"
+    tags: 
+        - online-shop-runner-dev-shell
+
