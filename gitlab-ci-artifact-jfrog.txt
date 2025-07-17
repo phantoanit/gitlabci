@@ -1,0 +1,45 @@
+variables:
+    PATH_PROJECT: "/home/onlineshop/online-shop-backend/"
+    USER_PROJECT: "onlineshop"
+    ZIP_VERSION: $CI_PROJECT_NAME-$CI_COMMIT_SHORT_SHA.zip
+stages:
+    - build
+    - push
+    - deploy
+
+build:
+    stage: build
+    variables:
+        GIT_STRATEGY: clone
+    script:
+        - dotnet restore
+        - zip -r $ZIP_VERSION .
+    tags: 
+        - online-shop-runner-dev-shell
+
+push:
+    stage: push
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - curl -X PUT -u $ARTIFACT_USER:$ARTIFACT_PASS -T $ZIP_VERSION "$ARTIFACT_URL/$ZIP_VERSION"
+    tags: 
+        - online-shop-runner-dev-shell
+
+deploy:
+    stage: deploy
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - sudo su ${USER_PROJECT} -c "cd ${PATH_PROJECT}; rm -rf *; curl -u $ARTIFACT_USER:$ARTIFACT_PASS -O $ARTIFACT_URL/$ZIP_VERSION; unzip -o $ZIP_VERSION"
+        - |
+          PID=$(sudo netstat -tulpn 2>/dev/null | grep ":5214 " | awk '{print $7}' | cut -d'/' -f1) || true
+          echo "${PID}"
+          if [ -n "${PID}" ]; then
+            sudo kill -9 ${PID} || true
+          fi
+          
+        - sudo su ${USER_PROJECT} -c "cd ${PATH_PROJECT}; nohup dotnet run > log.txt 2>&1 &"
+    tags: 
+        - online-shop-runner-dev-shell
+
