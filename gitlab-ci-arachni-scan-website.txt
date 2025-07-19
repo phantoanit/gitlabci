@@ -1,0 +1,111 @@
+variables:
+    PATH_PROJECT: "/home/onlineshop/online-shop-frontend/"
+    USER_PROJECT: "onlineshop"
+    IMAGE_VERSION: "$CI_PROJECT_NAME:$CI_COMMIT_SHORT_SHA"
+    CODECLIMATE_FILE: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHORT_SHA}_codeclimate"
+    SNYKSCAN_FILE: "${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHORT_SHA}_snykscan"
+    TRIVYFS_REPORT: "trivyfs_scan_${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHORT_SHA}_report"
+    TRIVY_IMAGE_REPORT: "security_scan_image_${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHORT_SHA}_report"
+    ARACHNI_WEBSITE_REPORT: "security_scan_website_${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}_${CI_COMMIT_SHORT_SHA}_report"
+
+stages:
+    - build
+    - test source code
+    - security scan image
+    - deploy
+    - security scan website
+
+Build:
+    stage: build
+    variables:
+        GIT_STRATEGY: clone
+    script:
+        - docker build -t ${IMAGE_VERSION} .
+    tags: 
+        - online-shop-runner-dev-shell
+
+Test source code:
+    stage: test source code
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - echo ""
+        #- docker run --interactive --platform linux/amd64 --rm -e CODECLIMATE_CODE="$PWD" --volume "$PWD":/code --volume /var/run/docker.sock:/var/run/docker.sock --volume /tmp/cc:/tmp/cc codeclimate/codeclimate analyze -f html> $CODECLIMATE_FILE.html
+    tags:
+        - online-shop-runner-dev-shell
+    artifacts:
+        paths:
+        - $CODECLIMATE_FILE.html
+        expire_in: 1 day
+
+Snykscan:
+    stage: test source code
+    variables:
+        GIT_STRATEGY: clone
+    script:
+        - echo ""
+        # - docker build --rm --network host --build-arg SNYK_AUTH_TOKEN=$SNYK_TOKEN --build-arg OUTPUT_FILENAME=$SNYKSCAN_FILE -t $SNYKSCAN_FILE -f Dockerfile-snyk .
+        # - docker create --name $SNYKSCAN_FILE $SNYKSCAN_FILE
+        # - docker cp $SNYKSCAN_FILE:/app/$SNYKSCAN_FILE.html .
+    tags:
+        - online-shop-runner-dev-shell
+    artifacts:
+        paths:
+        - $SNYKSCAN_FILE.html
+        expire_in: 1 day
+
+Trivyfs scan:
+    stage: test source code
+    variables:
+        GIT_STRATEGY: clone
+    script:
+        - echo ""
+        # - docker run --rm -v $PWD:/${CI_PROJECT_NAME} -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy fs /${CI_PROJECT_NAME} --severity HIGH,CRITICAL --format template --template "@contrib/html.tpl" --output /${CI_PROJECT_NAME}/$TRIVYFS_REPORT.html
+    tags:
+        - online-shop-runner-dev-shell
+    artifacts:
+        paths:
+        - $TRIVYFS_REPORT.html
+        expire_in: 1 day
+
+Trivy scan image:
+    stage: security scan image
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - echo ""
+        # - docker run --rm -v $(pwd):/${CI_PROJECT_NAME} -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy clean --all
+        # - docker run --rm -v $(pwd):/${CI_PROJECT_NAME} -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --format template --template "@contrib/html.tpl" --output /${CI_PROJECT_NAME}/${TRIVY_IMAGE_REPORT}.html $IMAGE_VERSION
+    tags:
+        - online-shop-runner-dev-shell
+    artifacts:
+        paths:
+        - ${TRIVY_IMAGE_REPORT}.html
+        expire_in: 1 day
+Deploy:
+    stage: deploy
+    variables:
+        GIT_STRATEGY: none
+    script:
+        - sudo su ${USER_PROJECT} -c "docker rm -f $CI_PROJECT_NAME; docker run --name $CI_PROJECT_NAME -dp '3000:3000' ${IMAGE_VERSION}"
+    tags: 
+        - online-shop-runner-dev-shell
+
+Security scan website:
+    stage: security scan website
+    variables:
+        GIT_STRATEGY: none
+    script:
+        #- docker run --rm -v /tmp/:/tmp/ devopseduvn/arachni:v1.4-0.5.10 bin/arachni --output-verbose --scope-include-subdomains $ADDRESS_FRONTEND --report-save-path=/tmp/$ARACHNI_WEBSITE_REPORT.afr > /dev/null 2>&1
+        - docker run --rm --user 1000:1000 -v /tmp/:/tmp/ thinhnp13swe/arachni:1.6.1.3-0.6.1.1 bin/arachni --output-verbose --scope-include-subdomains $ADDRESS_FRONTEND --report-save-path=/tmp/$ARACHNI_WEBSITE_REPORT.afr
+        #- docker run --rm -v /tmp/:/tmp/ devopseduvn/arachni:v1.4-0.5.10 bin/arachni_reporter /tmp/$ARACHNI_WEBSITE_REPORT.afr --reporter-html:outfile-/tmp/$ARACHNI_WEBSITE_REPORT.html.zip
+        - docker run --rm --user 1000:1000 -v /tmp/:/tmp/ thinhnp13swe/arachni:1.6.1.3-0.6.1.1 bin/arachni_reporter /tmp/$ARACHNI_WEBSITE_REPORT.afr --reporter=html:outfile=/tmp/$ARACHNI_WEBSITE_REPORT.html.zip
+        - sudo chmod 777 /tmp/$ARACHNI_WEBSITE_REPORT.html.zip
+        - cp /tmp/$ARACHNI_WEBSITE_REPORT.html.zip .
+    tags:
+        - online-shop-runner-dev-shell
+    artifacts:
+        paths:
+        - $ARACHNI_WEBSITE_REPORT.html.zip
+        expire_in: 1 day
+
