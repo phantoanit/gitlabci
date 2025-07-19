@@ -1,0 +1,24 @@
+import { check } from 'k6';
+import http from 'k6/http';
+import SQL from 'sql.js';
+
+export default function () {
+  // Chuỗi kết nối đến cơ sở dữ liệu
+  const dbConnectionString = 'Server=IP;Port=PORT;Database=DATABASE_NAME;User Id=USER;Password=PASSWORD;';
+
+  // Câu lệnh SQL bạn muốn thực thi
+  const sqlStatement = "INSERT INTO TABLE_NAME (FIELD_1, FIELD_2, FIELD_3, FIELD_4)
+VALUES (DATA_1, DATA_2, DATA_3, DATA_4)";
+
+  // Kết nối đến cơ sở dữ liệu
+  const dbFileData = http.get(dbConnectionString).body;
+  const db = new SQL.Database(dbFileData);
+
+  // Thực thi câu lệnh SQL
+  const resultSet = db.exec(sqlStatement);
+
+  // Kiểm tra kết quả của câu lệnh SQL
+  check(resultSet, {
+    'Câu lệnh SQL thành công': (result) => result.length > 0,
+  });
+}

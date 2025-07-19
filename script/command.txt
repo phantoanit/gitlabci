@@ -1,0 +1,5 @@
+######## login test ########
+# docker run --rm --network host -v $(pwd):/run loadimpact/k6 run -e RESULTS_PATH=/run --out json=/run/login-test.json --duration 10s --vus 5 /run/login-test.js
+
+######## response time test ########
+# docker run --rm --network host -v $(pwd):/run loadimpact/k6 run -e RESULTS_PATH=/run --out json=/run/login-test.json --duration 10s --vus 5 /run/response_time.js
