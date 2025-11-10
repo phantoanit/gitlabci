@@ -1,0 +1,91 @@
+stage('Test Source Code') {
+            parallel {
+
+                stage('SAST Semgrep Scan') {
+                    steps {
+                        dir('/data/vhv-app/colombo4/LMS') {
+                            sh '''
+                            cp /data/vhv-app/semgrep-checkmarx.yml /data/vhv-app/owasp_mapping.py /data/vhv-app/semgrep_report.py .
+                            docker run --rm -v /data/vhv-app/colombo4/LMS:/src returntocorp/semgrep   semgrep --config "p/ci" --config "p/php" --config=p/owasp-top-ten --config "p/javascript" --config "p/xss"  --config "p/phpcs-security-audit" --config "p/security-audit" --config "p/secrets" --config "semgrep-checkmarx.yml" --json --output /src/semgrep-report.json
+                            python3 semgrep_report.py
+                            '''
+                            stash name: 'report', includes: "semgrep-report.html"
+                        }
+                    }
+                    post {
+                        always {
+                            unstash 'report'
+                            archiveArtifacts artifacts: "semgrep-report.html", onlyIfSuccessful: true
+                        }
+                    }
+                }
+                
+                stage('SAST CodeClimate Analyze') {
+                    steps {
+						sh 'rm ${CODECLIMATE_FILE}.html || true'
+                        sh '''
+                            docker run --interactive --rm \
+                              --env CODECLIMATE_CODE="/data/vhv-app/colombo4/LMS/" \
+                              -v "/data/vhv-app/colombo4/LMS/":/code \
+                              -v /var/run/docker.sock:/var/run/docker.sock \
+                              -v /tmp/cc:/tmp/cc \
+                              codeclimate/codeclimate analyze -f html > ${CODECLIMATE_FILE}.html
+                        '''
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: "${CODECLIMATE_FILE}.html", onlyIfSuccessful: true
+                        }
+                    }
+                }
+
+                stage('SAST Snyk Scan Code') {
+                    steps {
+                        dir('/data/vhv-app/colombo4/LMS') {
+                            sh '''
+                                docker stop $SNYKSCAN_FILE || true
+                                docker rm $SNYKSCAN_FILE || true
+                                docker build --rm --network host --build-arg SNYK_AUTH_TOKEN=$SNYK_TOKEN --build-arg OUTPUT_FILENAME=$SNYKSCAN_FILE -t $SNYKSCAN_FILE -f /data/vhv-app/Dockerfile-snyk-code .
+                                docker create --name $SNYKSCAN_FILE $SNYKSCAN_FILE
+                                docker cp $SNYKSCAN_FILE:/app/$SNYKSCAN_FILE.html .
+                            '''
+                            stash name: "${SNYKSCAN_FILE}", includes: "${SNYKSCAN_FILE}.html"
+                        }
+                        
+                    }
+                    post {
+                        always {
+                            unstash "${SNYKSCAN_FILE}"
+                            archiveArtifacts artifacts: "${SNYKSCAN_FILE}.html", onlyIfSuccessful: true
+                        }
+                    }
+                }
+
+                stage('TrivyFS Scan') {
+                    steps {
+                        sh '''
+                            docker run --rm \
+                              -v /data/vhv-app/colombo4/:/scan \
+                              -v /var/run/docker.sock:/var/run/docker.sock \
+                              aquasec/trivy fs /scan \
+                              --severity HIGH,CRITICAL \
+                              --scanners vuln,secret,misconfig \
+                              --format template \
+                              --template "@contrib/html.tpl" \
+                              --output /scan/${TRIVYFS_REPORT}.html
+                        '''
+                    }
+                    post {
+                        always {
+							sh 'pwd'
+							sh 'ls -lta'
+                            sh 'ls -lta /data/vhv-app/colombo4/'
+                            sh 'cp /data/vhv-app/colombo4/${TRIVYFS_REPORT}.html $(pwd)'
+                            archiveArtifacts artifacts: "${TRIVYFS_REPORT}.html", onlyIfSuccessful: true
+                        }
+                    }
+                }
+
+               
+            }
+    }
