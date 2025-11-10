@@ -1,0 +1,139 @@
+rules:
+  # ========== DOM-BASED XSS (JS) ==========
+  - id: js-dom-xss-append
+    pattern: $X.append($Y)
+    message: "Possible DOM XSS via .append()"
+    languages: [javascript, typescript]
+    severity: WARNING
+
+  - id: js-dom-xss-html
+    pattern: $X.html($Y)
+    message: "Possible DOM XSS via .html()"
+    languages: [javascript, typescript]
+    severity: WARNING
+
+  - id: js-dom-xss-replacewith
+    pattern: $X.replaceWith($Y)
+    message: "Possible DOM XSS via .replaceWith()"
+    languages: [javascript, typescript]
+    severity: WARNING
+
+  - id: js-dom-xss-prepend
+    pattern: $X.prepend($Y)
+    message: "Possible DOM XSS via .prepend()"
+    languages: [javascript, typescript]
+    severity: WARNING
+
+  - id: js-prototype-pollution
+    patterns:
+      - pattern: Object.assign($OBJ, $USER_INPUT)
+    message: "Prototype Pollution risk: merging user input into object"
+    languages: [javascript, typescript]
+    severity: WARNING
+
+  - id: js-localstorage-sensitive
+    patterns:
+      - pattern: localStorage.setItem($KEY, $VALUE)
+      - metavariable-pattern:
+          metavariable: $VALUE
+          pattern-regex: '(?i)password|token|secret|auth'
+    message: "Sensitive data stored in localStorage"
+    languages: [javascript, typescript]
+    severity: WARNING
+
+
+  - id: js-sessionstorage-sensitive
+    patterns:
+      - pattern: sessionStorage.setItem($KEY, $VALUE)
+    message: "Sensitive data stored in sessionStorage"
+    languages: [javascript, typescript]
+    severity: WARNING
+
+  - id: html-inline-event-xss
+    pattern-regex: 'on[a-zA-Z]+\s*='
+    message: "Possible XSS via inline event handler (onclick, onerror, ...)"
+    languages: [html]
+    severity: WARNING
+
+  - id: html-missing-hsts
+    pattern-regex: '(?i)strict-transport-security'
+    message: "Missing HTTP Strict-Transport-Security (HSTS) header"
+    languages: [regex]
+    severity: INFO
+
+
+
+  # ========== PATH TRAVERSAL (PHP) ==========
+  - id: php-path-traversal-files
+    patterns:
+      - pattern: $VAR = $_FILES[...]
+      - pattern: $FUNC($VAR, ...)
+    message: "Possible Path Traversal from user-controlled file input"
+    languages: [php]
+    severity: ERROR
+
+
+  - id: php-path-traversal-get
+    pattern: $FUNC($_GET[...])
+    message: "Possible Path Traversal using GET param in file operation"
+    languages: [php]
+    severity: ERROR
+    metadata:
+      relevant_functions: ["file_exists", "is_dir", "include", "require"]
+
+  # ========== HARDCODED CRYPTO KEYS ==========
+  - id: php-hardcoded-key
+    patterns:
+      - pattern: $VAR = "<...>"
+      - pattern-inside: |
+          $FUNC(..., $VAR, ...)
+    message: "Hardcoded cryptographic key detected"
+    languages: [php]
+    severity: WARNING
+
+  # ========== JWT HARDCODED SECRET ==========
+  - id: jwt-hardcoded-secret
+    patterns:
+      - pattern: $VAR = "<...>"
+      - pattern-inside: |
+          JWT::encode(..., $VAR, ...)
+    message: "Hardcoded JWT secret key"
+    languages: [php, javascript]
+    severity: ERROR
+
+  # ========== SSL VERIFICATION BYPASS ==========
+  - id: php-curl-insecure
+    pattern: curl_setopt($CH, CURLOPT_SSL_VERIFYPEER, false)
+    message: "SSL verification disabled (CURLOPT_SSL_VERIFYPEER=false)"
+    languages: [php]
+    severity: ERROR
+
+  - id: php-curl-insecure-host
+    pattern: curl_setopt($CH, CURLOPT_SSL_VERIFYHOST, 0)
+    message: "SSL verification disabled (CURLOPT_SSL_VERIFYHOST=0)"
+    languages: [php]
+    severity: ERROR
+
+  # ========== HARDCODED PASSWORD ==========
+  - id: php-hardcoded-password
+    patterns:
+      - pattern: $VAR = "<...>"
+      - pattern-inside: |
+          password_hash($VAR, ...)
+    message: "Hardcoded password found"
+    languages: [php]
+    severity: ERROR
+
+  # ========== COOKIE FLAGS ==========
+  - id: php-cookie-no-flags
+    pattern: setcookie($NAME, $VALUE)
+    message: "Cookie set without HttpOnly/Secure/SameSite flag"
+    languages: [php]
+    severity: WARNING
+
+  # ========== REGEX DOS ==========
+  - id: js-evil-regex
+    pattern-regex: "(\\.\\+){2,}"
+    message: "Potential ReDoS via vulnerable regex"
+    languages: [javascript, typescript]
+    severity: WARNING
